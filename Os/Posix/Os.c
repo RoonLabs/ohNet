@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <ifaddrs.h>
 #include <signal.h>
+#include <poll.h>
 
 #ifdef PLATFORM_MACOSX_GNU
 #include <SystemConfiguration/SystemConfiguration.h>
@@ -822,7 +823,7 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
     pfds[1].fd = handle->iSocket;
     pfds[1].events = POLLOUT;
 
-    int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, aTimeoutMs));
+    int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, aTimeoutMs), handle);
     if (pollErr > 0 && pfds[1].revents != 0) {
         int sock_error;
         socklen_t err_len = sizeof(sock_error);
