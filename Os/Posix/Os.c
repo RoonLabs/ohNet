@@ -816,23 +816,14 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
     /* ignore err as we expect this to fail due to EINPROGRESS */
     (void)connect(handle->iSocket, (struct sockaddr*)&addr, sizeof(addr));
 
-    fd_set read;
-    FD_ZERO(&read);
-    FD_SET(handle->iPipe[0], &read);
-    fd_set write;
-    FD_ZERO(&write);
-    FD_SET(handle->iSocket, &write);
-    fd_set error;
-    FD_ZERO(&error);
-    FD_SET(handle->iSocket, &error);
+    struct pollfd pfds[2];
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLOUT;
 
-    struct timeval tv;
-    tv.tv_sec = aTimeoutMs / 1000;
-    tv.tv_usec = (aTimeoutMs % 1000) * 1000;
-
-    int32_t selectErr = TEMP_FAILURE_RETRY_2(select(nfds(handle), &read, &write, &error, &tv), handle);
-    if (selectErr > 0 && FD_ISSET(handle->iSocket, &write)) {
-        // Need to check socket status using getsockopt. See man page for connect, EINPROGRESS
+    int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, aTimeoutMs));
+    if (pollErr > 0 && pfds[1].revents != 0) {
         int sock_error;
         socklen_t err_len = sizeof(sock_error);
         if (getsockopt(handle->iSocket, SOL_SOCKET, SO_ERROR, &sock_error, &err_len) == 0) {
@@ -840,6 +831,7 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
         }
     }
     SetFdBlocking(handle->iSocket);
+
     return err;
 }
 
