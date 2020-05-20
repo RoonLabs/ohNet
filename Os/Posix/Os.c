@@ -825,6 +825,7 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
 
     int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, aTimeoutMs), handle);
     if (pollErr > 0 && pfds[1].revents != 0) {
+        // Need to check socket status using getsockopt. See man page for connect, EINPROGRESS
         int sock_error;
         socklen_t err_len = sizeof(sock_error);
         if (getsockopt(handle->iSocket, SOL_SOCKET, SO_ERROR, &sock_error, &err_len) == 0) {
