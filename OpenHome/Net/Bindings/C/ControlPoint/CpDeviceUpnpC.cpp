@@ -18,8 +18,7 @@ HandleCpDeviceList STDCALL CpDeviceListCreateUpnpAll(OhNetCallbackDevice aAdded,
         list->Start();
         return (THandle)list;
     }
-    catch (NetworkError& aEx) {
-        Debug::LOG_ERROR(Debug::kNetwork, "CpDeviceListCreateUpnpAll threw NetworkError from: %s:%u\n", aEx.File(), aEx.Line());
+    catch (...) {
     }
     return NULL;
 }
@@ -34,8 +33,7 @@ HandleCpDeviceList STDCALL CpDeviceListCreateUpnpRoot(OhNetCallbackDevice aAdded
         list->Start();
         return (THandle)list;
     }
-    catch (NetworkError& aEx) {
-        Debug::LOG_ERROR(Debug::kNetwork, "CpDeviceListCreateUpnpRoot threw NetworkError from: %s:%u\n", aEx.File(), aEx.Line());
+    catch (...) {
     }
     return NULL;
 }
@@ -52,8 +50,7 @@ HandleCpDeviceList STDCALL CpDeviceListCreateUpnpUuid(const char* aUuid,
         list->Start();
         return (THandle)list;
     }
-    catch (NetworkError& aEx) {
-        Debug::LOG_ERROR(Debug::kNetwork, "CpDeviceListCreateUpnpUuid threw NetworkError from: %s:%u\n", aEx.File(), aEx.Line());
+    catch (...) {
     }
     return NULL;
 }
@@ -71,8 +68,7 @@ HandleCpDeviceList STDCALL CpDeviceListCreateUpnpDeviceType(const char* aDomainN
         list->Start();
         return (THandle)list;
     }
-    catch (NetworkError& aEx) {
-        Debug::LOG_ERROR(Debug::kNetwork, "CpDeviceListCreateUpnpDeviceType threw NetworkError from: %s:%u\n", aEx.File(), aEx.Line());
+    catch (...) {
     }
     return NULL;
 }
@@ -90,8 +86,7 @@ HandleCpDeviceList STDCALL CpDeviceListCreateUpnpServiceType(const char* aDomain
         list->Start();
         return (THandle)list;
     }
-    catch (NetworkError& aEx) {
-        Debug::LOG_ERROR(Debug::kNetwork, "CpDeviceListCreateUpnpServiceType threw NetworkError from: %s:%u\n", aEx.File(), aEx.Line());
+    catch (...) {
     }
     return NULL;
 }
