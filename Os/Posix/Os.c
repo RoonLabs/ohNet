@@ -11,7 +11,6 @@
 #include <sys/resource.h> // eScheduleNice only
 #include <string.h>
 #include <sys/types.h>
-#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
@@ -817,7 +816,7 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
     /* ignore err as we expect this to fail due to EINPROGRESS */
     (void)connect(handle->iSocket, (struct sockaddr*)&addr, sizeof(addr));
 
-    struct pollfd pfds[2];
+    struct pollfd pfds[2] = {0,};
     pfds[0].fd = handle->iPipe[0];
     pfds[0].events = POLLIN;
     pfds[1].fd = handle->iSocket;
@@ -882,18 +881,16 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
     }
     SetFdNonBlocking(handle->iSocket);
 
-    fd_set read;
-    FD_ZERO(&read);
-    FD_SET(handle->iPipe[0], &read);
-    FD_SET(handle->iSocket, &read);
-    fd_set error;
-    FD_ZERO(&error);
-    FD_SET(handle->iSocket, &error);
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
 
     int32_t received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
     if (received==-1 && errno==EWOULDBLOCK) {
-        int32_t selectErr = TEMP_FAILURE_RETRY_2(select(nfds(handle), &read, NULL, &error, NULL), handle);
-        if (selectErr > 0 && FD_ISSET(handle->iSocket, &read)) {
+        int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
+        if (pollErr > 0 && pfds[1].revents == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
         }
     }
@@ -914,18 +911,16 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
 
     SetFdNonBlocking(handle->iSocket);
 
-    fd_set read;
-    FD_ZERO(&read);
-    FD_SET(handle->iPipe[0], &read);
-    FD_SET(handle->iSocket, &read);
-    fd_set error;
-    FD_ZERO(&error);
-    FD_SET(handle->iSocket, &error);
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
 
     int32_t received = TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle);
     if (received==-1 && errno==EWOULDBLOCK) {
-        int32_t selectErr = TEMP_FAILURE_RETRY_2(select(nfds(handle), &read, NULL, &error, NULL), handle);
-        if (selectErr > 0 && FD_ISSET(handle->iSocket, &read)) {
+        int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
+        if (pollErr > 0 && pfds[1].revents == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle);
         }
     }
@@ -994,18 +989,16 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
 
     SetFdNonBlocking(handle->iSocket);
 
-    fd_set read;
-    FD_ZERO(&read);
-    FD_SET(handle->iPipe[0], &read);
-    FD_SET(handle->iSocket, &read);
-    fd_set error;
-    FD_ZERO(&error);
-    FD_SET(handle->iSocket, &error);
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
 
     int32_t h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
     if (h==-1 && errno==EWOULDBLOCK) {
-        int32_t selectErr = TEMP_FAILURE_RETRY_2(select(nfds(handle), &read, NULL, &error, NULL), handle);
-        if (selectErr > 0 && FD_ISSET(handle->iSocket, &read)) {
+        int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
+        if (pollErr > 0 && pfds[1].revents == POLLIN) {
             h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
         }
     }
@@ -1484,22 +1477,22 @@ void adapterChangeObserverThread(void* aPtr)
     char buffer[4096];
     struct nlmsghdr *nlh;
     int32_t len, ret;
-    fd_set rfds,errfds;
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
 
     while (1) {
         if (SocketInterrupted(handle)) {
             return;
         }
 
-        FD_ZERO(&rfds);
-        FD_SET(handle->iPipe[0], &rfds);
-        FD_SET(handle->iSocket, &rfds);
+        pfds[0].revents = 0;
+        pfds[1].revents = 0;
 
-        FD_ZERO(&errfds);
-        FD_SET(handle->iSocket, &errfds);
-
-        ret = TEMP_FAILURE_RETRY_2(select(nfds(handle), &rfds, NULL, &errfds, NULL), handle);
-        if ((ret > 0) && FD_ISSET(handle->iSocket, &rfds)) {
+        ret = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
+        if ((ret > 0) && (pfds[1].revents == POLLIN)) {
             nlh = (struct nlmsghdr *) buffer;
             if ((len = recv(handle->iSocket, nlh, 4096, 0)) > 0) {
                 while (NLMSG_OK(nlh, len) && (nlh->nlmsg_type != NLMSG_DONE)) {
@@ -1618,7 +1611,11 @@ void DnsRefreshThread(void* aPtr)
         // Watch descriptor was successfully created; start reading events.
         const size_t bytesToRead = sizeof(struct inotify_event) + NAME_MAX + 1;
         int32_t ret;
-        fd_set rfds, errfds;
+        struct pollfd pfds[2] = {0,};
+        pfds[0].fd = handle->iPipe[0];
+        pfds[0].events = POLLIN;
+        pfds[1].fd = handle->iSocket;
+        pfds[1].events = POLLIN;
 
         for (;;) {
             if (SocketInterrupted(handle)) {
@@ -1627,15 +1624,11 @@ void DnsRefreshThread(void* aPtr)
                 return;
             }
 
-            FD_ZERO(&rfds);
-            FD_SET(handle->iPipe[0], &rfds);
-            FD_SET(handle->iSocket, &rfds);
+            pfds[0].revents = 0;
+            pfds[1].revents = 0;
 
-            FD_ZERO(&errfds);
-            FD_SET(handle->iSocket, &errfds);
-
-            ret = TEMP_FAILURE_RETRY_2(select(nfds(handle), &rfds, NULL, &errfds, NULL), handle);
-            if ((ret > 0) && FD_ISSET(handle->iSocket, &rfds)) {
+            ret = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
+            if ((ret > 0) && (pfds[1].revents == POLLIN)) {
                 char* buffer[bytesToRead];
                 int32_t len = read(handle->iSocket, buffer, bytesToRead);
                 if (len > 0) {
