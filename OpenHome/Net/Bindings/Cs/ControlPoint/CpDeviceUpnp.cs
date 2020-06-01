@@ -241,6 +241,9 @@ namespace OpenHome.Net.ControlPoint
             iRemoved = aRemoved;
             IntPtr ptr = GCHandle.ToIntPtr(iGch);
             iHandle = CpDeviceListCreateUpnpAll(iFnAdded, ptr, iFnRemoved, ptr);
+            if (iHandle == IntPtr.Zero) {
+                throw new ErrorNetworkAddressInUse();
+            }
         }
     }
 
@@ -273,6 +276,9 @@ namespace OpenHome.Net.ControlPoint
             iRemoved = aRemoved;
             IntPtr ptr = GCHandle.ToIntPtr(iGch);
             iHandle = CpDeviceListCreateUpnpRoot(iFnAdded, ptr, iFnRemoved, ptr);
+            if (iHandle == IntPtr.Zero) {
+                throw new ErrorNetworkAddressInUse();
+            }
         }
     }
 
@@ -309,6 +315,9 @@ namespace OpenHome.Net.ControlPoint
             IntPtr ptr = GCHandle.ToIntPtr(iGch);
             iHandle = CpDeviceListCreateUpnpUuid(uuid, iFnAdded, ptr, iFnRemoved, ptr);
             Marshal.FreeHGlobal(uuid);
+            if (iHandle == IntPtr.Zero) {
+                throw new ErrorNetworkAddressInUse();
+            }
         }
     }
 
@@ -350,6 +359,9 @@ namespace OpenHome.Net.ControlPoint
             iHandle = CpDeviceListCreateUpnpDeviceType(domain, type, aVersion, iFnAdded, ptr, iFnRemoved, ptr);
             Marshal.FreeHGlobal(domain);
             Marshal.FreeHGlobal(type);
+            if (iHandle == IntPtr.Zero) {
+                throw new ErrorNetworkAddressInUse();
+            }
         }
     }
 
@@ -391,6 +403,9 @@ namespace OpenHome.Net.ControlPoint
             iHandle = CpDeviceListCreateUpnpServiceType(domain, type, aVersion, iFnAdded, ptr, iFnRemoved, ptr);
             Marshal.FreeHGlobal(domain);
             Marshal.FreeHGlobal(type);
+            if (iHandle == IntPtr.Zero) {
+                throw new ErrorNetworkAddressInUse();
+            }
         }
     }
 }
