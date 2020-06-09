@@ -903,7 +903,7 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
         fprintf(stderr, " OsNetworkReceive, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
         fprintf(stderr, " OsNetworkReceive, after poll, pollErr: %d, revents: %x\n", pollErr, pfds[1].revents); fflush(stderr);
-        if (pollErr > 0 && pfds[1].revents == POLLIN) {
+        if (pollErr > 0 && (pfds[1].revents || POLLIN) == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
         }
     }
