@@ -1008,20 +1008,19 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
 
     SetFdNonBlocking(handle->iSocket);
 
-    fd_set read;
-    FD_ZERO(&read);
-    FD_SET(handle->iPipe[0], &read);
-    FD_SET(handle->iSocket, &read);
-    fd_set error;
-    FD_ZERO(&error);
-    FD_SET(handle->iSocket, &error);
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
+
 
     int32_t h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
     if (h==-1 && errno==EWOULDBLOCK) {
-        fprintf(stderr, "OsNetworkAccept, before select\n"); fflush(stderr);
-        int32_t selectErr = TEMP_FAILURE_RETRY_2(select(nfds(handle), &read, NULL, &error, NULL), handle);
-        fprintf(stderr, "OsNetworkAccept, after select, selectErr: %d\n", selectErr); fflush(stderr);
-        if (selectErr > 0 && FD_ISSET(handle->iSocket, &read)) {
+        fprintf(stderr, "OsNetworkAccept, before poll\n"); fflush(stderr);
+        int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
+        fprintf(stderr, "OsNetworkAccept, after poll, pollErr: %d\n", pollErr); fflush(stderr);
+        if (pollErr > 0 && pfds[1].revents == POLLIN) {
             h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
         }
     }
