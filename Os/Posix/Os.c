@@ -816,34 +816,22 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
     /* ignore err as we expect this to fail due to EINPROGRESS */
     (void)connect(handle->iSocket, (struct sockaddr*)&addr, sizeof(addr));
 
-    fd_set read;
-    FD_ZERO(&read);
-    FD_SET(handle->iPipe[0], &read);
-    fd_set write;
-    FD_ZERO(&write);
-    FD_SET(handle->iSocket, &write);
-    fd_set error;
-    FD_ZERO(&error);
-    FD_SET(handle->iSocket, &error);
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLOUT;
 
-    struct timeval tv;
-    tv.tv_sec = aTimeoutMs / 1000;
-    tv.tv_usec = (aTimeoutMs % 1000) * 1000;
-    fprintf(stderr, "OsNetworkConnect, before select\n"); fflush(stderr);
-    int32_t selectErr = TEMP_FAILURE_RETRY_2(select(nfds(handle), &read, &write, &error, &tv), handle);
-    fprintf(stderr, "OsNetworkConnect, after select, selectErr: %d\n", selectErr); fflush(stderr);
-    if (selectErr > 0 && FD_ISSET(handle->iSocket, &write)) {
-      fprintf(stderr, "OsNetworkConnect, after select, before getsockopt\n"); fflush(stderr);
+    int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, aTimeoutMs), handle);
+    if (pollErr > 0 && pfds[1].revents != 0) {
         // Need to check socket status using getsockopt. See man page for connect, EINPROGRESS
         int sock_error;
         socklen_t err_len = sizeof(sock_error);
         if (getsockopt(handle->iSocket, SOL_SOCKET, SO_ERROR, &sock_error, &err_len) == 0) {
-          fprintf(stderr, "OsNetworkConnect, after poll, after getsockopt\n"); fflush(stderr);
             err = ((err_len == sizeof(sock_error)) && (sock_error == 0)) ? 0 : -2;
         }
     }
     SetFdBlocking(handle->iSocket);
-    fprintf(stderr, "OsNetworkConnect, before return, err: %d\n", err); fflush(stderr);
     return err;
 }
 
@@ -897,19 +885,15 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
     pfds[0].events = POLLIN;
     pfds[1].fd = handle->iSocket;
     pfds[1].events = POLLIN;
-    fprintf(stderr, " OsNetworkReceive, before recv\n"); fflush(stderr);
     int32_t received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
     if (received==-1 && errno==EWOULDBLOCK) {
-        fprintf(stderr, " OsNetworkReceive, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
-        fprintf(stderr, " OsNetworkReceive, after poll, pollErr: %d, revents: %x\n", pollErr, pfds[1].revents); fflush(stderr);
         if (pollErr > 0 && (pfds[1].revents && POLLIN) == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
         }
     }
 
     SetFdBlocking(handle->iSocket);
-    fprintf(stderr, " OsNetworkReceive, before return, received: %d\n", received); fflush(stderr);
     return received;
 }
 
@@ -933,9 +917,7 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
 
     int32_t received = TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle);
     if (received==-1 && errno==EWOULDBLOCK) {
-        fprintf(stderr, "OsNetworkReceiveFrom, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
-        fprintf(stderr, "OsNetworkReceiveFrom, after poll, pollErr: %d\n", pollErr); fflush(stderr);
         if (pollErr > 0 && (pfds[1].revents && POLLIN) == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle);
         }
@@ -943,7 +925,6 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
     SetFdBlocking(handle->iSocket);
     *aAddress = addr.sin_addr.s_addr;
     *aPort = ntohs(addr.sin_port);
-    fprintf(stderr, "OsNetworkReceiveFrom, before return, received: %d\n", received); fflush(stderr);
     return received;
 }
 
@@ -1015,15 +996,12 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
 
     int32_t h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
     if (h==-1 && errno==EWOULDBLOCK) {
-        fprintf(stderr, "OsNetworkAccept, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
-        fprintf(stderr, "OsNetworkAccept, after poll, pollErr: %d\n", pollErr); fflush(stderr);
         if (pollErr > 0 && (pfds[1].revents && POLLIN) == POLLIN) {
             h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
         }
     }
     SetFdBlocking(handle->iSocket);
-    fprintf(stderr, "OsNetworkAccept, after poll, after accept, h: %d\n", h); fflush(stderr);
     if (h == -1) {
         return kHandleNull;
     }
@@ -1031,13 +1009,11 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
     OsNetworkHandle* newHandle = CreateHandle(handle->iCtx, h);
     if (newHandle == NULL) {
         close(h);
-        fprintf(stderr, "OsNetworkAccept, after poll, after accept, after createhandle, handle null\n"); fflush(stderr);
         return kHandleNull;
     }
 
     *aClientAddress = addr.sin_addr.s_addr;
     *aClientPort = ntohs(addr.sin_port);
-    fprintf(stderr, "OsNetworkAccept, before return, no errors\n"); fflush(stderr);
     return (THandle)newHandle;
 }
 
@@ -1514,9 +1490,7 @@ void adapterChangeObserverThread(void* aPtr)
         pfds[0].revents = 0;
         pfds[1].revents = 0;
         
-        fprintf(stderr, "adapterChangeObserverThread, before poll\n"); fflush(stderr);
         ret = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
-        fprintf(stderr, "adapterChangeObserverThread, after poll, ret: %d\n", ret); fflush(stderr);
         if ((ret > 0) && ((pfds[1].revents && POLLIN) == POLLIN)) {
             nlh = (struct nlmsghdr *) buffer;
             if ((len = recv(handle->iSocket, nlh, 4096, 0)) > 0) {
