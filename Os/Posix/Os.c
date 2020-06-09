@@ -891,25 +891,25 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
         return -1;
     }
     SetFdNonBlocking(handle->iSocket);
-
+    
     struct pollfd pfds[2] = {0,};
     pfds[0].fd = handle->iPipe[0];
     pfds[0].events = POLLIN;
     pfds[1].fd = handle->iSocket;
     pfds[1].events = POLLIN;
-
+    fprintf(stderr, " OsNetworkReceive, before recv\n"); fflush(stderr);
     int32_t received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
     if (received==-1 && errno==EWOULDBLOCK) {
-        fprintf(stderr, "OsNetworkReceive, before poll\n"); fflush(stderr);
+        fprintf(stderr, " OsNetworkReceive, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
-        fprintf(stderr, "OsNetworkReceive, after poll, pollErr: %d\n", pollErr); fflush(stderr);
+        fprintf(stderr, " OsNetworkReceive, after poll, pollErr: %d, revents: %x\n", pollErr, pfds[1].revents); fflush(stderr);
         if (pollErr > 0 && pfds[1].revents == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
         }
     }
 
     SetFdBlocking(handle->iSocket);
-    fprintf(stderr, "OsNetworkReceive, before return, received: %d\n", received); fflush(stderr);
+    fprintf(stderr, " OsNetworkReceive, before return, received: %d\n", received); fflush(stderr);
     return received;
 }
 
