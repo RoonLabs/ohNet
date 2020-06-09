@@ -903,7 +903,7 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
         fprintf(stderr, " OsNetworkReceive, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
         fprintf(stderr, " OsNetworkReceive, after poll, pollErr: %d, revents: %x\n", pollErr, pfds[1].revents); fflush(stderr);
-        if (pollErr > 0 && (pfds[1].revents || POLLIN) == POLLIN) {
+        if (pollErr > 0 && (pfds[1].revents && POLLIN) == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle);
         }
     }
@@ -936,7 +936,7 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
         fprintf(stderr, "OsNetworkReceiveFrom, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
         fprintf(stderr, "OsNetworkReceiveFrom, after poll, pollErr: %d\n", pollErr); fflush(stderr);
-        if (pollErr > 0 && pfds[1].revents == POLLIN) {
+        if (pollErr > 0 && (pfds[1].revents && POLLIN) == POLLIN) {
             received = TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle);
         }
     }
@@ -1018,7 +1018,7 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
         fprintf(stderr, "OsNetworkAccept, before poll\n"); fflush(stderr);
         int32_t pollErr = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
         fprintf(stderr, "OsNetworkAccept, after poll, pollErr: %d\n", pollErr); fflush(stderr);
-        if (pollErr > 0 && pfds[1].revents == POLLIN) {
+        if (pollErr > 0 && (pfds[1].revents && POLLIN) == POLLIN) {
             h = TEMP_FAILURE_RETRY_2(accept(handle->iSocket, (struct sockaddr*)&addr, &len), handle);
         }
     }
@@ -1517,7 +1517,7 @@ void adapterChangeObserverThread(void* aPtr)
         fprintf(stderr, "adapterChangeObserverThread, before poll\n"); fflush(stderr);
         ret = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
         fprintf(stderr, "adapterChangeObserverThread, after poll, ret: %d\n", ret); fflush(stderr);
-        if ((ret > 0) && (pfds[1].revents == POLLIN)) {
+        if ((ret > 0) && ((pfds[1].revents && POLLIN) == POLLIN)) {
             nlh = (struct nlmsghdr *) buffer;
             if ((len = recv(handle->iSocket, nlh, 4096, 0)) > 0) {
                 while (NLMSG_OK(nlh, len) && (nlh->nlmsg_type != NLMSG_DONE)) {
@@ -1653,7 +1653,7 @@ void DnsRefreshThread(void* aPtr)
             pfds[1].revents = 0;
 
             ret = TEMP_FAILURE_RETRY_2(poll(pfds, 2, -1), handle);
-            if ((ret > 0) && (pfds[1].revents == POLLIN)) {
+            if ((ret > 0) && ((pfds[1].revents && POLLIN) == POLLIN)) {
                 char* buffer[bytesToRead];
                 int32_t len = read(handle->iSocket, buffer, bytesToRead);
                 if (len > 0) {
