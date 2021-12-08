@@ -56,7 +56,7 @@ ifeq ($(MACHINE),Darwin)
       platform = Linux
       detected_openhome_system = Linux
       detected_openhome_architecture = rpi
-  else ifeq (, $(findstring arm64, $(gcc_machine)))
+  else ifneq (, $(findstring arm64, $(gcc_machine)))
     platform = ArmMac
     detected_openhome_system = Mac
     detected_openhome_architecture = arm64
