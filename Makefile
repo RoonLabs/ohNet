@@ -193,7 +193,7 @@ ifeq ($(platform),iOS)
 	no_shared_objects = yes
 endif
 
-ifeq ($(platform),IntelMac)
+ifeq ($(platform),ArmMac)
 	platform ?= ArmMac
 	linkopts_ohNet = -Wl,-install_name,@loader_path/libohNet.dylib
 	platform_cflags = -DPLATFORM_MACOSX_GNU -arch arm64 -mmacosx-version-min=10.7
