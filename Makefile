@@ -48,6 +48,10 @@ ifeq ($(MACHINE),Darwin)
       platform = Linux
       detected_openhome_system = Linux
       detected_openhome_architecture = rpi
+  else ifneq (, $(findstring arm64, $(gcc_machine)))
+    platform = ArmMac
+    detected_openhome_system = Mac
+    detected_openhome_architecture = arm64
   else
     platform = IntelMac
     detected_openhome_system = Mac
@@ -175,6 +179,21 @@ ifeq ($(platform),iOS)
     mono_lib_dir=/Library/Frameworks/Xamarin.iOS.framework/Versions/Current/lib/mono/Xamarin.iOS
 	csharpdefines = /define:IOS /r:$(mono_lib_dir)/Xamarin.iOS.dll
 	no_shared_objects = yes
+endif
+
+ifeq ($(platform),ArmMac)
+	platform ?= ArmMac
+	linkopts_ohNet = -Wl,-install_name,@loader_path/libohNet.dylib
+	platform_cflags = -DPLATFORM_MACOSX_GNU -arch arm64 -mmacosx-version-min=10.7
+	platform_linkflags = -arch arm64 -framework CoreFoundation -framework SystemConfiguration -framework IOKit
+	osbuilddir = Mac-arm64
+	openhome_architecture = arm64
+
+	objdir = Build/Obj/$(osbuilddir)/$(build_dir)/
+	compiler = clang -fPIC -stdlib=libc++ -o $(objdir)
+	link = clang++ -pthread -stdlib=libc++ $(platform_linkflags)
+	ar = ar rc $(objdir)
+	openhome_system = Mac
 endif
 
 ifeq ($(platform),IntelMac)
