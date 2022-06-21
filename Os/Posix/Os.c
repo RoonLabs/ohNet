@@ -11,7 +11,6 @@
 #include <sys/resource.h> // eScheduleNice only
 #include <string.h>
 #include <sys/types.h>
-#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
@@ -36,6 +35,7 @@
 #include <unistd.h>
 #include <ifaddrs.h>
 #include <signal.h>
+#include <poll.h>
 
 #ifdef PLATFORM_MACOSX_GNU
 #include <SystemConfiguration/SystemConfiguration.h>
@@ -1222,7 +1222,6 @@ static OsNetworkHandle* CreateHandle(OsContext* aContext, int32_t aSocket)
     }
     SetFdNonBlocking(handle->iPipe[0]);
     handle->iSocket = aSocket;
-    assert(aSocket >= 0 && aSocket < MAX_FILE_DESCRIPTOR);
     handle->iInterrupted = 0;
     handle->iCtx = aContext;
 
@@ -1316,25 +1315,19 @@ int32_t OsNetworkConnect(THandle aHandle, TIpAddress aAddress, uint16_t aPort, u
     /* ignore err as we expect this to fail due to EINPROGRESS */
     (void)connect(handle->iSocket, (struct sockaddr*)&addr, len);
 
-    fd_set read;
-    fd_set write;
-    fd_set error;
-    int32_t selectErr;
-
-    struct timeval tv;
-    tv.tv_sec = aTimeoutMs / 1000;
-    tv.tv_usec = (aTimeoutMs % 1000) * 1000;
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLOUT;
+    int32_t pollErr;
 
     do {
-        FD_ZERO(&read);
-        FD_SET(handle->iPipe[0], &read);
-        FD_ZERO(&write);
-        FD_SET(handle->iSocket, &write);
-        FD_ZERO(&error);
-        FD_SET(handle->iSocket, &error);
-        selectErr = (long int) select(nfds(handle), &read, &write, &error, &tv);
-    } while(selectErr == -1L && errno == EINTR && !SocketInterrupted(handle));
-    if (selectErr > 0 && FD_ISSET(handle->iSocket, &write)) {
+        pfds[0].revents = 0;
+        pfds[1].revents = 0;
+        pollErr = (long int) poll(pfds, 2, aTimeoutMs);
+    } while(pollErr == -1L && errno == EINTR && !SocketInterrupted(handle));
+    if (pollErr > 0 && pfds[1].revents != 0) {
         // Need to check socket status using getsockopt. See man page for connect, EINPROGRESS
         int sock_error;
         socklen_t err_len = sizeof(sock_error);
@@ -1395,21 +1388,20 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
         return -1;
     }
 
-    fd_set read;
-    fd_set error;
-    int32_t selectErr;
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
+    int32_t pollErr;
 
     while(1) 
     {
-        FD_ZERO(&read);
-        FD_SET(handle->iPipe[0], &read);
-        FD_SET(handle->iSocket, &read);
-        FD_ZERO(&error);
-        FD_SET(handle->iSocket, &error);
+        pfds[0].revents = 0;
+        pfds[1].revents = 0;
+        pollErr = (long int)poll(pfds, 2, -1);
 
-        selectErr = (long int) select(nfds(handle), &read, NULL, &error, NULL);
-
-        if (selectErr < 0) {
+        if (pollErr < 0) {
             // We've been interupted or something has gone wrong with select()
             // Don't continue trying and exit our loop. 
             if (errno != EINTR || SocketInterrupted(handle)) {
@@ -1423,10 +1415,9 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
         }
     }
 
-
     int32_t received = -1;
-    if (selectErr != -1) {
-        received = FD_ISSET(handle->iSocket, &read) ? TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle)
+    if (pollErr != -1) {
+        received = pfds[1].revents == POLLIN ? TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle)
                                                     : -1; //Assuming it was the pipe or an error
     }
 
@@ -1442,21 +1433,20 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
     struct sockaddr addr;
     socklen_t addrLen = sizeof(addr);
 
-    fd_set read;
-    fd_set error;
-    int32_t selectErr;
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
+    int32_t pollErr;
 
     while(1) 
     {
-        FD_ZERO(&read);
-        FD_SET(handle->iPipe[0], &read);
-        FD_SET(handle->iSocket, &read);
-        FD_ZERO(&error);
-        FD_SET(handle->iSocket, &error);
+        pfds[0].revents = 0;
+        pfds[1].revents = 0;
+        pollErr = (long int)poll(pfds, 2, -1);
 
-        selectErr = (long int) select(nfds(handle), &read, NULL, &error, NULL);
-
-        if (selectErr < 0) {
+        if (pollErr < 0) {
             // We've been interupted or something has gone wrong with select()
             // Don't continue trying and exit our loop. 
             if (errno != EINTR || SocketInterrupted(handle)) {
@@ -1472,9 +1462,9 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
 
 
     int32_t received = -1;
-    if (selectErr != -1) {
-        received = FD_ISSET(handle->iSocket, &read) ? TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle)
-                                                    : -1; //Assuming it was the pipe or an error
+    if (pollErr != -1) {
+        received = pfds[1].revents == POLLIN ? TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle)
+                                             : -1; //Assuming it was the pipe or an error
         if (received != -1) {
             *aAddress = TIpAddressFromSockAddr(&addr);
             *aPort = PortFromSockAddr(&addr);
@@ -1552,21 +1542,20 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
      *
      * Otherwise, we end up looping around and eating CPU time until
      * there is a client ready to connect. */
-    fd_set read;
-    fd_set error;
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
     int32_t h = 0;
 
     while(1) 
     {
-        FD_ZERO(&read);
-        FD_SET(handle->iPipe[0], &read);
-        FD_SET(handle->iSocket, &read);
-        FD_ZERO(&error);
-        FD_SET(handle->iSocket, &error);
-
+        pfds[0].revents = 0;
+        pfds[1].revents = 0;
         // NOTE: If select() returns an error we should not assume that
         //       any fd_set is left in a valid state (even with EINTR)
-        h = (long int) select(nfds(handle), &read, NULL, &error, NULL);
+        h = (long int) poll(pfds, 2, -1);
 
         if (h < 0) {
             // We've been interupted or something has gone wrong with select()
@@ -1587,8 +1576,8 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
     // a client is waiting to connect. Otherwise, we were interupted and
     // so shouldn't call accept().
     if (h != -1) {
-        h = FD_ISSET(handle->iSocket, &read) ? TEMP_FAILURE_RETRY_2(accept(handle->iSocket, &addr, &len), handle)
-                                             : -1; //Assuming it was the pipe or an error, so use indicate this here. 
+        h = (pfds[1].revents == POLLIN) ? TEMP_FAILURE_RETRY_2(accept(handle->iSocket, &addr, &len), handle)
+                                        : -1; //Assuming it was the pipe or an error, so use indicate this here. 
     }
 
     // If select() has failed, our socket wasn't readable or something
@@ -2178,7 +2167,11 @@ void adapterChangeObserverThread(void* aPtr)
     char buffer[4096];
     struct nlmsghdr *nlh;
     int32_t len, ret;
-    fd_set rfds,errfds;
+    struct pollfd pfds[2] = {0,};
+    pfds[0].fd = handle->iPipe[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = handle->iSocket;
+    pfds[1].events = POLLIN;
 
     while (1) {
         if (SocketInterrupted(handle)) {
@@ -2186,15 +2179,12 @@ void adapterChangeObserverThread(void* aPtr)
         }
 
         do {
-            FD_ZERO(&rfds);
-            FD_SET(handle->iPipe[0], &rfds);
-            FD_SET(handle->iSocket, &rfds);
-            FD_ZERO(&errfds);
-            FD_SET(handle->iSocket, &errfds);
-            ret = (long int) select(nfds(handle), &rfds, NULL, &errfds, NULL);
+            pfds[0].revents = 0;
+            pfds[1].revents = 0;
+            ret = (long int) poll(pfds, 2, -1);
         } while(ret == -1L && errno == EINTR && !SocketInterrupted(handle));
 
-        if ((ret > 0) && FD_ISSET(handle->iSocket, &rfds)) {
+        if ((ret > 0) && (pfds[1].revents == POLLIN)) {
             nlh = (struct nlmsghdr *) buffer;
             if ((len = recv(handle->iSocket, nlh, 4096, 0)) > 0) {
                 while (NLMSG_OK(nlh, len) && (nlh->nlmsg_type != NLMSG_DONE)) {
@@ -2306,7 +2296,11 @@ void DnsRefreshThread(void* aPtr)
         // Watch descriptor was successfully created; start reading events.
         const size_t bytesToRead = sizeof(struct inotify_event) + NAME_MAX + 1;
         int32_t ret;
-        fd_set rfds, errfds;
+        struct pollfd pfds[2] = {0,};
+        pfds[0].fd = handle->iPipe[0];
+        pfds[0].events = POLLIN;
+        pfds[1].fd = handle->iSocket;
+        pfds[1].events = POLLIN;
 
         for (;;) {
             if (SocketInterrupted(handle)) {
@@ -2316,15 +2310,12 @@ void DnsRefreshThread(void* aPtr)
             }
 
             do {
-                FD_ZERO(&rfds);
-                FD_SET(handle->iPipe[0], &rfds);
-                FD_SET(handle->iSocket, &rfds);
-                FD_ZERO(&errfds);
-                FD_SET(handle->iSocket, &errfds);
-                ret = (long int) select(nfds(handle), &rfds, NULL, &errfds, NULL);
+                pfds[0].revents = 0;
+                pfds[1].revents = 0;
+                ret = (long int) poll(pfds, 2, -1);
             } while(ret == -1L && errno == EINTR && !SocketInterrupted(handle));
 
-            if ((ret > 0) && FD_ISSET(handle->iSocket, &rfds)) {
+            if ((ret > 0) && (pfds[1].revents == POLLIN)) {
                 char* buffer[bytesToRead];
                 int32_t len = read(handle->iSocket, buffer, bytesToRead);
                 if (len > 0) {
