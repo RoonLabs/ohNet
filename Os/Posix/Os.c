@@ -1417,7 +1417,7 @@ int32_t OsNetworkReceive(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes)
 
     int32_t received = -1;
     if (pollErr != -1) {
-        received = pfds[1].revents == POLLIN ? TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle)
+        received = (POLLIN && pfds[1].revents) == POLLIN ? TEMP_FAILURE_RETRY_2(recv(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL), handle)
                                                     : -1; //Assuming it was the pipe or an error
     }
 
@@ -1463,7 +1463,7 @@ int32_t OsNetworkReceiveFrom(THandle aHandle, uint8_t* aBuffer, uint32_t aBytes,
 
     int32_t received = -1;
     if (pollErr != -1) {
-        received = pfds[1].revents == POLLIN ? TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle)
+        received = (POLLIN && pfds[1].revents) == POLLIN ? TEMP_FAILURE_RETRY_2(recvfrom(handle->iSocket, aBuffer, aBytes, MSG_NOSIGNAL, (struct sockaddr*)&addr, &addrLen), handle)
                                              : -1; //Assuming it was the pipe or an error
         if (received != -1) {
             *aAddress = TIpAddressFromSockAddr(&addr);
@@ -1576,7 +1576,7 @@ THandle OsNetworkAccept(THandle aHandle, TIpAddress* aClientAddress, uint32_t* a
     // a client is waiting to connect. Otherwise, we were interupted and
     // so shouldn't call accept().
     if (h != -1) {
-        h = (pfds[1].revents == POLLIN) ? TEMP_FAILURE_RETRY_2(accept(handle->iSocket, &addr, &len), handle)
+        h = ((POLLIN && pfds[1].revents) == POLLIN) ? TEMP_FAILURE_RETRY_2(accept(handle->iSocket, &addr, &len), handle)
                                         : -1; //Assuming it was the pipe or an error, so use indicate this here. 
     }
 
@@ -2186,7 +2186,7 @@ void adapterChangeObserverThread(void* aPtr)
             ret = (long int) poll(pfds, 2, -1);
         } while(ret == -1L && errno == EINTR && !SocketInterrupted(handle));
 
-        if ((ret > 0) && (pfds[1].revents == POLLIN)) {
+        if ((ret > 0) && ((POLLIN && pfds[1].revents) == POLLIN)) {
             nlh = (struct nlmsghdr *) buffer;
             if ((len = recv(handle->iSocket, nlh, 4096, 0)) > 0) {
                 while (NLMSG_OK(nlh, len) && (nlh->nlmsg_type != NLMSG_DONE)) {
@@ -2317,7 +2317,7 @@ void DnsRefreshThread(void* aPtr)
                 ret = (long int) poll(pfds, 2, -1);
             } while(ret == -1L && errno == EINTR && !SocketInterrupted(handle));
 
-            if ((ret > 0) && (pfds[1].revents == POLLIN)) {
+            if ((ret > 0) && ((POLLIN && pfds[1].revents) == POLLIN)) {
                 char* buffer[bytesToRead];
                 int32_t len = read(handle->iSocket, buffer, bytesToRead);
                 if (len > 0) {
