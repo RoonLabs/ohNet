@@ -1854,6 +1854,7 @@ int32_t OsNetworkListAdapters(OsContext* aContext, OsNetworkAdapter** aAdapters,
         while (iter != NULL) {
 
             if (iter->ifa_addr == NULL) {
+                iter = iter->ifa_next;
                 continue;
             }
 #if !defined(PLATFORM_MACOSX_GNU)
