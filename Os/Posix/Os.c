@@ -62,6 +62,11 @@
 #define kThreadSchedPolicy (SCHED_RR)
 #define kMaxThreadNameChars 16
 
+/* Send timeout for datagram sockets, in seconds.  Chosen far above any healthy
+send, which takes microseconds, so normal discovery never reaches it.  Its only
+job is to put a bound on a send the kernel will otherwise never complete. */
+#define kSendTimeoutSecs 5
+
 #define TEMP_FAILURE_RETRY_2(expression, handle)                            \
     (__extension__                                                          \
     ({ long int __result;                                                   \
@@ -1235,6 +1240,19 @@ THandle OsNetworkCreate(OsContext* aContext, OsNetworkSocketType aSocketType, Os
     int32_t family = (aSocketFamily == eOsNetworkSocketV4) ? AF_INET : AF_INET6;
 
     socketH = socket(family, type, 0);
+    if (socketH != -1 && type == SOCK_DGRAM) {
+        /* A datagram send has no upper bound on how long the kernel can hold it.
+        If the outbound interface goes away mid-send, sendto sleeps in the kernel
+        and never returns.  The caller keeps whatever lock it holds, and for the
+        SSDP unicast listener that is the device list lock, so the whole device
+        list stops.  A send timeout makes the send fail instead.  OsNetworkSendTo
+        then returns short, Socket::SendTo throws NetworkError, and each caller
+        already handles that. */
+        struct timeval sndtimeo;
+        sndtimeo.tv_sec = kSendTimeoutSecs;
+        sndtimeo.tv_usec = 0;
+        (void)setsockopt(socketH, SOL_SOCKET, SO_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
+    }
     OsNetworkHandle* handle = CreateHandle(aContext, socketH);
     if (handle == kHandleNull) {
         /* close is the one networking call that is exempt from being wrapped by TEMP_FAILURE_RETRY.  See
